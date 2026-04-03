@@ -13,6 +13,10 @@ const NEW_CRATE_BURST: usize = 5;
 const NEW_CRATE_DELAY: Duration = Duration::from_secs(630);
 /// Delay between publishes for propagation
 const PROPAGATION_DELAY: Duration = Duration::from_secs(30);
+/// Max retries on rate limit
+const MAX_RETRIES: usize = 3;
+/// Initial backoff on rate limit (5 minutes)
+const RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(300);
 
 fn crate_exists_on_registry(name: &str) -> bool {
     Command::new("cargo")
@@ -67,23 +71,56 @@ pub fn run(crates_dir: &str, dry_run: bool) -> Result<()> {
             CRATE_PUBLISH_ORDER.len()
         );
 
-        let mut cmd = Command::new("cargo");
-        cmd.args(["publish", "--allow-dirty"]);
+        let mut published = false;
+        for attempt in 0..=MAX_RETRIES {
+            let mut cmd = Command::new("cargo");
+            cmd.args(["publish", "--allow-dirty"]);
 
-        if dry_run {
-            cmd.arg("--dry-run");
-        }
+            if dry_run {
+                cmd.arg("--dry-run");
+            }
 
-        cmd.current_dir(&crate_path);
+            cmd.current_dir(&crate_path);
 
-        let status = cmd.status()?;
+            let output = cmd.output()?;
 
-        if !status.success() {
+            if output.status.success() {
+                published = true;
+                break;
+            }
+
+            let stderr = String::from_utf8_lossy(&output.stderr);
+
+            // Version already published — skip
+            if stderr.contains("already exists") {
+                println!("  {pkg_name} already exists on crates.io, skipping.");
+                break;
+            }
+
+            // Rate limited — backoff and retry
+            if stderr.contains("rate limit")
+                || stderr.contains("429")
+                || stderr.contains("try again")
+            {
+                if attempt < MAX_RETRIES {
+                    let wait = RATE_LIMIT_BACKOFF * (attempt as u32 + 1);
+                    println!(
+                        "  Rate limited, retrying in {wait:?} (attempt {}/{MAX_RETRIES})...",
+                        attempt + 1
+                    );
+                    thread::sleep(wait);
+                    continue;
+                }
+                bail!("Failed to publish {pkg_name} after {MAX_RETRIES} retries (rate limited)");
+            }
+
+            // Some other failure
+            eprintln!("{stderr}");
             bail!("Failed to publish {pkg_name}");
         }
 
-        // Wait for crates.io propagation (except for dry run or last crate)
-        if !dry_run && i < CRATE_PUBLISH_ORDER.len() - 1 {
+        // Wait for crates.io propagation only if we actually published
+        if published && !dry_run && i < CRATE_PUBLISH_ORDER.len() - 1 {
             println!("Waiting {PROPAGATION_DELAY:?} for crates.io propagation...");
             thread::sleep(PROPAGATION_DELAY);
         }
