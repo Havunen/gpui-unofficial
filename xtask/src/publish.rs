@@ -16,9 +16,9 @@ const NEW_CRATE_DELAY: Duration = Duration::from_secs(630);
 /// Delay between publishes for propagation (crates.io sparse index takes 30–90s)
 const PROPAGATION_DELAY: Duration = Duration::from_secs(90);
 /// Backoff between retries when a dependency hasn't propagated yet
-const PROPAGATION_RETRY_WAIT: Duration = Duration::from_secs(60);
+const PROPAGATION_RETRY_WAIT: Duration = Duration::from_secs(90);
 /// Max retries on rate limit or propagation failures
-const MAX_RETRIES: usize = 3;
+const MAX_RETRIES: usize = 5;
 /// Initial backoff on rate limit (5 minutes)
 const RATE_LIMIT_BACKOFF: Duration = Duration::from_secs(300);
 
@@ -80,6 +80,37 @@ fn patch_git_deps_for_publish(crate_dir: &Path) -> Result<()> {
     // ordering issues (e.g. gpui-macros dev-depends on gpui, but gpui depends on
     // gpui-macros). Dev-deps aren't needed by consumers of the published crate.
     strip_internal_dev_deps(&mut doc, "dev-dependencies");
+
+    // Also strip target-specific dev-dependencies on internal crates
+    let target_names: Vec<String> = doc
+        .get("target")
+        .and_then(|t| t.as_table_like())
+        .map(|t| t.iter().map(|(k, _)| k.to_string()).collect())
+        .unwrap_or_default();
+
+    for target_name in &target_names {
+        let has_dev_deps = doc
+            .get("target")
+            .and_then(|t| t.get(target_name))
+            .and_then(|s| s.get("dev-dependencies"))
+            .is_some();
+
+        if has_dev_deps {
+            let deps_item = doc["target"][target_name]["dev-dependencies"].clone();
+            let mut temp_doc = DocumentMut::new();
+            temp_doc.insert("dev-dependencies", deps_item);
+            strip_internal_dev_deps(&mut temp_doc, "dev-dependencies");
+            if let Some(new_deps) = temp_doc.get("dev-dependencies").cloned() {
+                if let Some(target_section) = doc
+                    .get_mut("target")
+                    .and_then(|t| t.get_mut(target_name))
+                    .and_then(|s| s.as_table_like_mut())
+                {
+                    target_section.insert("dev-dependencies", new_deps);
+                }
+            }
+        }
+    }
 
     fs::write(&cargo_toml_path, doc.to_string())?;
     Ok(())
@@ -300,13 +331,21 @@ pub fn run(crates_dir: &str, dry_run: bool) -> Result<()> {
                 || stderr.contains("not available in any registry")
             {
                 if attempt < MAX_RETRIES {
+                    // Extract the missing package name for diagnostics
+                    let missing = stderr
+                        .lines()
+                        .find(|l| l.contains("no matching package") || l.contains("not found"))
+                        .unwrap_or("(unknown)");
                     println!(
-                        "  Dependency not yet propagated, retrying in {PROPAGATION_RETRY_WAIT:?} (attempt {}/{MAX_RETRIES})...",
+                        "  Dependency not yet propagated: {missing}");
+                    println!(
+                        "  Retrying in {PROPAGATION_RETRY_WAIT:?} (attempt {}/{MAX_RETRIES})...",
                         attempt + 1
                     );
                     thread::sleep(PROPAGATION_RETRY_WAIT);
                     continue;
                 }
+                eprintln!("{stderr}");
                 bail!("Failed to publish {pkg_name} after {MAX_RETRIES} retries (dependency propagation)");
             }
 
