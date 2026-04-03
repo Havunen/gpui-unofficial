@@ -6,8 +6,21 @@ use std::time::Duration;
 
 use crate::transform::{CRATE_PUBLISH_ORDER, crate_name_from_path, unofficial_name};
 
-/// Delay between publishing crates to allow crates.io to propagate
-const PUBLISH_DELAY: Duration = Duration::from_secs(30);
+/// crates.io allows a burst of 5 new crates, then 1 per 10 minutes.
+/// For existing crates (version updates), the limit is more generous.
+const NEW_CRATE_BURST: usize = 5;
+/// Delay after the burst for new crates (10 min + buffer)
+const NEW_CRATE_DELAY: Duration = Duration::from_secs(630);
+/// Delay between publishes for propagation
+const PROPAGATION_DELAY: Duration = Duration::from_secs(30);
+
+fn crate_exists_on_registry(name: &str) -> bool {
+    Command::new("cargo")
+        .args(["search", name, "--limit", "1"])
+        .output()
+        .ok()
+        .is_some_and(|o| String::from_utf8_lossy(&o.stdout).contains(name))
+}
 
 pub fn run(crates_dir: &str, dry_run: bool) -> Result<()> {
     let crates_path = Path::new(crates_dir);
@@ -22,6 +35,8 @@ pub fn run(crates_dir: &str, dry_run: bool) -> Result<()> {
         if dry_run { "(dry run)" } else { "" }
     );
 
+    let mut new_crate_count = 0;
+
     for (i, crate_entry) in CRATE_PUBLISH_ORDER.iter().enumerate() {
         let crate_name = crate_name_from_path(crate_entry);
         let pkg_name = unofficial_name(crate_name);
@@ -30,6 +45,20 @@ pub fn run(crates_dir: &str, dry_run: bool) -> Result<()> {
         if !crate_path.exists() {
             println!("Skipping {pkg_name} (not found)");
             continue;
+        }
+
+        // Check rate limiting for new crates
+        if !dry_run {
+            let is_new = !crate_exists_on_registry(&pkg_name);
+            if is_new {
+                new_crate_count += 1;
+                if new_crate_count > NEW_CRATE_BURST {
+                    println!(
+                        "Rate limit: new crate #{new_crate_count} (past burst of {NEW_CRATE_BURST}), waiting {NEW_CRATE_DELAY:?}..."
+                    );
+                    thread::sleep(NEW_CRATE_DELAY);
+                }
+            }
         }
 
         println!(
@@ -55,8 +84,8 @@ pub fn run(crates_dir: &str, dry_run: bool) -> Result<()> {
 
         // Wait for crates.io propagation (except for dry run or last crate)
         if !dry_run && i < CRATE_PUBLISH_ORDER.len() - 1 {
-            println!("Waiting {PUBLISH_DELAY:?} for crates.io propagation...");
-            thread::sleep(PUBLISH_DELAY);
+            println!("Waiting {PROPAGATION_DELAY:?} for crates.io propagation...");
+            thread::sleep(PROPAGATION_DELAY);
         }
     }
 
