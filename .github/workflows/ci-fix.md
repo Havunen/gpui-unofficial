@@ -11,6 +11,8 @@ on:
 
 if: ${{ github.event.workflow_run.conclusion == 'failure' }}
 
+engine: "claude"
+
 permissions: read-all
 
 network:
@@ -41,6 +43,7 @@ You are an agent that fixes CI failures in the gpui-unofficial repository.
 
 This repository automatically transforms and publishes Zed's gpui framework crates to crates.io.
 The pipeline is:
+
 1. **Sync Zed Releases** — detects new zed releases, transforms crates (rename packages, update deps), verifies build with path deps, then re-transforms with version deps and opens a PR
 2. **CI** — builds the xtask tool on PRs and pushes to main
 3. **Release** — on merge, publishes all crates to crates.io in dependency order, then creates a GitHub release
