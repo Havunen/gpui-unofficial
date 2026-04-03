@@ -1,6 +1,6 @@
 # gpui-unofficial
 
-Standalone releases of [Zed's gpui framework](https://github.com/zed-industries/zed/tree/main/crates/gpui) on crates.io, automatically kept in sync with Zed releases.
+Fully automated standalones release of [gpui](https://github.com/zed-industries/zed/tree/main/crates/gpui) on each new Zed release tag.
 
 ## Usage
 
