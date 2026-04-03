@@ -1,4 +1,4 @@
 /target
-/crates
+/crates/*/target
 Cargo.lock
 .DS_Store
