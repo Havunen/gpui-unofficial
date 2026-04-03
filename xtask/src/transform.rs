@@ -16,9 +16,9 @@ pub const CRATE_PUBLISH_ORDER: &[&str] = &[
     "tooling/perf",
     "util_macros",
     "util",
+    "zlog",
     "ztracing_macro",
     "ztracing",
-    "zlog",
     // Tier 2 - Core infrastructure
     "scheduler",
     "sum_tree",
