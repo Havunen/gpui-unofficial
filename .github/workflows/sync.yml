@@ -2,7 +2,7 @@ name: Sync Zed Releases
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
+    - cron: '0 1,7,13,19 * * *'  # At 1am, 7am, 1pm, 7pm UTC
   workflow_dispatch:
     inputs:
       zed_tag:
