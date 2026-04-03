@@ -307,7 +307,7 @@ pub fn crate_name_from_path(path: &str) -> &str {
 }
 
 /// Check if a dependency name matches any crate in our publish order
-fn is_internal_crate(dep_name: &str) -> bool {
+pub fn is_internal_crate(dep_name: &str) -> bool {
     CRATE_PUBLISH_ORDER
         .iter()
         .any(|path| crate_name_from_path(path) == dep_name)

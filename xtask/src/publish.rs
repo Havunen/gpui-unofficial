@@ -76,8 +76,48 @@ fn patch_git_deps_for_publish(crate_dir: &Path) -> Result<()> {
         remove_dep_from_features(&mut doc, dep_name);
     }
 
+    // Strip dev-dependencies on internal crates — they create circular publish
+    // ordering issues (e.g. gpui-macros dev-depends on gpui, but gpui depends on
+    // gpui-macros). Dev-deps aren't needed by consumers of the published crate.
+    strip_internal_dev_deps(&mut doc, "dev-dependencies");
+
     fs::write(&cargo_toml_path, doc.to_string())?;
     Ok(())
+}
+
+/// Remove any dev-dependencies that reference internal (workspace) crates.
+fn strip_internal_dev_deps(doc: &mut DocumentMut, section: &str) {
+    let to_remove: Vec<String> = doc
+        .get(section)
+        .and_then(|d| d.as_table_like())
+        .map(|table| {
+            table
+                .iter()
+                .filter_map(|(name, dep)| {
+                    // Check the `package` field (alias) or the dep key itself
+                    let pkg = dep
+                        .as_table_like()
+                        .and_then(|t| t.get("package"))
+                        .and_then(|v| v.as_str())
+                        .unwrap_or(name);
+                    // Match against unofficial naming convention
+                    let is_ours = pkg.ends_with("-gpui-unofficial") || pkg == "gpui-unofficial";
+                    is_ours.then(|| name.to_string())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if to_remove.is_empty() {
+        return;
+    }
+
+    if let Some(deps) = doc.get_mut(section).and_then(|d| d.as_table_like_mut()) {
+        for name in &to_remove {
+            println!("  Stripping internal dev-dep: {name}");
+            deps.remove(name);
+        }
+    }
 }
 
 /// Patch a single dependency section: strip git fields from git+version deps,
