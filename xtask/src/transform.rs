@@ -40,7 +40,7 @@ pub const CRATE_PUBLISH_ORDER: &[&str] = &[
 ];
 
 /// Map from original crate name to unofficial name
-fn unofficial_name(name: &str) -> String {
+pub fn unofficial_name(name: &str) -> String {
     // Convert snake_case to kebab-case and add suffix
     let kebab = name.replace('_', "-");
     format!("{kebab}-unofficial")
@@ -286,7 +286,7 @@ fn transform_cargo_toml(
 }
 
 /// Extract the crate name from a publish order entry (handles nested paths)
-fn crate_name_from_path(path: &str) -> &str {
+pub fn crate_name_from_path(path: &str) -> &str {
     path.rsplit('/').next().unwrap_or(path)
 }
 

@@ -4,7 +4,7 @@ use std::process::Command;
 use std::thread;
 use std::time::Duration;
 
-use crate::transform::CRATE_PUBLISH_ORDER;
+use crate::transform::{CRATE_PUBLISH_ORDER, crate_name_from_path, unofficial_name};
 
 /// Delay between publishing crates to allow crates.io to propagate
 const PUBLISH_DELAY: Duration = Duration::from_secs(30);
@@ -22,23 +22,24 @@ pub fn run(crates_dir: &str, dry_run: bool) -> Result<()> {
         if dry_run { "(dry run)" } else { "" }
     );
 
-    for (i, crate_name) in CRATE_PUBLISH_ORDER.iter().enumerate() {
-        let unofficial_name = crate_name.replace('_', "-") + "-unofficial";
-        let crate_path = crates_path.join(&unofficial_name);
+    for (i, crate_entry) in CRATE_PUBLISH_ORDER.iter().enumerate() {
+        let crate_name = crate_name_from_path(crate_entry);
+        let pkg_name = unofficial_name(crate_name);
+        let crate_path = crates_path.join(&pkg_name);
 
         if !crate_path.exists() {
-            println!("Skipping {unofficial_name} (not found)");
+            println!("Skipping {pkg_name} (not found)");
             continue;
         }
 
         println!(
-            "[{}/{}] Publishing {unofficial_name}...",
+            "[{}/{}] Publishing {pkg_name}...",
             i + 1,
             CRATE_PUBLISH_ORDER.len()
         );
 
         let mut cmd = Command::new("cargo");
-        cmd.arg("publish");
+        cmd.args(["publish", "--allow-dirty"]);
 
         if dry_run {
             cmd.arg("--dry-run");
@@ -49,7 +50,7 @@ pub fn run(crates_dir: &str, dry_run: bool) -> Result<()> {
         let status = cmd.status()?;
 
         if !status.success() {
-            bail!("Failed to publish {unofficial_name}");
+            bail!("Failed to publish {pkg_name}");
         }
 
         // Wait for crates.io propagation (except for dry run or last crate)

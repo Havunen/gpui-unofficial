@@ -36,6 +36,21 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Install Rust
+        if: steps.check_release.outputs.exists != 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        if: steps.check_release.outputs.exists != 'true'
+        uses: Swatinem/rust-cache@v2
+
+      - name: Publish to crates.io
+        if: steps.check_release.outputs.exists != 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          cargo run -p xtask -- publish --crates-dir crates
+
       - name: Create tarball
         if: steps.check_release.outputs.exists != 'true'
         run: |
@@ -52,13 +67,10 @@ jobs:
 
           ## Usage
 
-          Add to your Cargo.toml:
           \`\`\`toml
           [dependencies]
-          gpui-unofficial = { git = \"https://github.com/gpui-unofficial/gpui-unofficial\", tag = \"v${{ steps.version.outputs.version }}\" }
+          gpui-unofficial = \"${{ steps.version.outputs.version }}\"
           \`\`\`
-
-          Or download the crates tarball below.
 
           ## Changes
 
