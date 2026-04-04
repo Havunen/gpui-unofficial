@@ -18,7 +18,13 @@ jobs:
       - name: Get version from metadata
         id: version
         run: |
-          VERSION=$(jq -r '.zed_tag' crates/transform-metadata.json | sed 's/^v//')
+          # Use bumped_to version if present (patch releases), otherwise fall back to zed_tag
+          BUMPED=$(jq -r '.bumped_to // empty' crates/transform-metadata.json)
+          if [ -n "$BUMPED" ]; then
+            VERSION="$BUMPED"
+          else
+            VERSION=$(jq -r '.zed_tag' crates/transform-metadata.json | sed 's/^v//')
+          fi
           ZED_TAG=$(jq -r '.zed_tag' crates/transform-metadata.json)
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "zed_tag=$ZED_TAG" >> $GITHUB_OUTPUT
