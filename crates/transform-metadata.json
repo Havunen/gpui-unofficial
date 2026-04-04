@@ -1,4 +1,5 @@
 {
+  "bumped_to": "0.230.2",
   "crates": [
     "gpui_util",
     "collections",
